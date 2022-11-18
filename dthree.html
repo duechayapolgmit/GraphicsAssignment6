@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+ <head>
+ <title>D3.js Demo</title>
+ <meta charset="UTF-8">
+ <style type="text/css"></style>
+ <script src = "https://d3js.org/d3.v5.min.js"></script>
+ <script src="https://code.jquery.com/jquery-3.1.0.min.js"></script>
+</head>
+ <body>
+ <script type="text/javascript">
+    // DATA GATHER AND PLOT
+    $.getJSON("https://jsonblob.com/api/1039328202555932672", function (data) {
+        plotCO2Data(data)
+    })
+
+    function plotCO2Data(data){
+        // Set up SVG size and margins
+        var margin = {top: 50, right: 50, bottom: 50, left: 50}, 
+            width = 900 - margin.left - margin.right, 
+            height = 670 - margin.top - margin.bottom;
+    
+
+        // Y SCALE
+        var y = d3.scaleLinear()
+            .domain(d3.extent(data, function (d) { return d["Interpolated"]}))
+            .range([height, 0]);
+
+        // X TIME SCALE
+        var parseDate = d3.timeParse("%Y-%m-%d");
+        var x = d3.scaleTime()
+            .domain(d3.extent(data, function (d) { return parseDate(d["Date"])}))
+            .range([0, width]);
+
+        // AXES
+        var xAxis = d3.axisBottom(x).ticks(3);
+        var yAxis = d3.axisLeft(y).ticks(3);
+
+        // LINE
+        var valueLine = d3.line()
+            .x(function (d) { return x(parseDate(d["Date"]))})
+            .y(function (d) { return y(d["Interpolated"])});
+
+        // SVG DRAW
+        var svg = d3.select('body')
+            .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+                .attr("transform", "translate("+margin.left+","+margin.top+")")
+            .append("g")
+                .attr('class', 'x axis')
+                .call(xAxis)
+            .append("g")
+                .attr('class', 'y axis')
+                .call(yAxis);
+        
+        // LINE GRAPH DRAW
+        var svgLine = svg.append("path")
+            .attr("d", valueLine(data))
+            .attr("stroke", "red");
+
+        // AXIS LABELS
+        var xLabel = d3.select('svg').append("text")
+            .attr("class", "x label")
+            .attr("x", width/2)
+            .attr("y", 40)
+            .text("Year");
+        var yLabel = d3.select('svg').append("text")
+            .attr("class", "y label")
+            .attr("text-anchor", "end")
+            .attr("x", -height/2)
+            .attr("y", 20)
+            .attr("transform", "rotate(-90)")
+            .text("CO2 / PPM");
+
+        // TRENDLINE - COPIED FROM http://bl.ocks.org/benvandyke/8459843
+        var xLabels = data.map(function (d) { return d['yearmonth']; });
+        var xSeries = d3.range(1, xLabels.length + 1);
+		var ySeries = data.map(function(d) { return parseFloat(d['rate']); });
+
+        var leastSquaresCoeff = leastSquares(xSeries, ySeries);
+
+        var x1 = xLabels[0];
+		var y1 = leastSquaresCoeff[0] + leastSquaresCoeff[1];
+		var x2 = xLabels[xLabels.length - 1];
+		var y2 = leastSquaresCoeff[0] * xSeries.length + leastSquaresCoeff[1];
+		var trendData = [[x1,y1,x2,y2]];
+		
+		var trendline = d3.select('svg').selectAll(".trendline")
+			.data(trendData);
+			
+		trendline.enter()
+			.append("line")
+			.attr("class", "trendline")
+			.attr("x1", function(d) { return x(d[0]); })
+			.attr("y1", function(d) { return y(d[1]); })
+			.attr("x2", function(d) { return x(d[2]); })
+			.attr("y2", function(d) { return y(d[3]); })
+			.attr("stroke", "black")
+			.attr("stroke-width", 1);
+            
+        }
+
+        // returns slope, intercept and r-square of the line
+	function leastSquares(xSeries, ySeries) {
+		var reduceSumFunc = function(prev, cur) { return prev + cur; };
+		
+		var xBar = xSeries.reduce(reduceSumFunc) * 1.0 / xSeries.length;
+		var yBar = ySeries.reduce(reduceSumFunc) * 1.0 / ySeries.length;
+
+		var ssXX = xSeries.map(function(d) { return Math.pow(d - xBar, 2); })
+			.reduce(reduceSumFunc);
+		
+		var ssYY = ySeries.map(function(d) { return Math.pow(d - yBar, 2); })
+			.reduce(reduceSumFunc);
+			
+		var ssXY = xSeries.map(function(d, i) { return (d - xBar) * (ySeries[i] - yBar); })
+			.reduce(reduceSumFunc);
+			
+		var slope = ssXY / ssXX;
+		var intercept = yBar - (xBar * slope);
+		var rSquare = Math.pow(ssXY, 2) / (ssXX * ssYY);
+		
+		return [slope, intercept, rSquare];
+    }
+ </script>
+ </body>
+</html>
