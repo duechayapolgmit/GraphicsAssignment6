@@ -6,25 +6,32 @@
  <style type="text/css"></style>
  <script src = "https://d3js.org/d3.v5.min.js"></script>
  <script src="https://code.jquery.com/jquery-3.1.0.min.js"></script>
+ <style>
+ </style>
 </head>
  <body>
  <script type="text/javascript">
     // DATA GATHER AND PLOT
     $.getJSON("https://jsonblob.com/api/1039328202555932672", function (data) {
+        console.log(data)
         plotCO2Data(data)
     })
 
     function plotCO2Data(data){
         // Set up SVG size and margins
-        var margin = {top: 50, right: 50, bottom: 50, left: 50}, 
-            width = 900 - margin.left - margin.right, 
-            height = 670 - margin.top - margin.bottom;
+        var margin = {top: 50, right: 50, bottom: 50, left: 50},
+            margin2 = {top:430, right: 20, bottom: 30, left: 40},
+            width = 960 - margin.left - margin.right, 
+            height = 500 - margin.top - margin.bottom,
+            height2 = 500 - margin2.top - margin2.bottom;
     
-
         // Y SCALE
         var y = d3.scaleLinear()
             .domain(d3.extent(data, function (d) { return d["Interpolated"]}))
             .range([height, 0]);
+        var y2 = d3.scaleLinear()
+            .domain(d3.extent(data, function (d) { return d["Interpolated"]}))
+            .range([height2, 0]);
 
         // X TIME SCALE
         var parseDate = d3.timeParse("%Y-%m-%d");
@@ -40,90 +47,125 @@
         var valueLine = d3.line()
             .x(function (d) { return x(parseDate(d["Date"]))})
             .y(function (d) { return y(d["Interpolated"])});
+        var valueLine2 = d3.line()
+            .x(function (d) { return x(parseDate(d["Date"]))})
+            .y(function (d) { return y2(d["Interpolated"])});
+        
+        // ZOOM AND BRUSH INIT
+        var brush = d3.brushX()
+            .extent([[0, 0], [width, height2]])
+            .on("brush end", brushed);
+
+        var zoom = d3.zoom()
+            .scaleExtent([1, Infinity])
+            .translateExtent([[0, 0], [width, height]])
+            .extent([[0, 0], [width, height]])
+            .on("zoom", zoomed);
 
         // SVG DRAW
         var svg = d3.select('body')
-            .append("svg")
+            .append("svg") // svg setup
                 .attr("width", width + margin.left + margin.right)
-                .attr("height", height + margin.top + margin.bottom)
-            .append("g")
-                .attr("transform", "translate("+margin.left+","+margin.top+")")
-            .append("g")
+                .attr("height", height*1.5 + margin.top + margin.bottom)
+            .append("g") // group setup
+                .attr("transform", "translate("+margin.left+","+margin.top+")");
+
+         // FOCUS, CONTEXT, AND LINE CHART DRAW
+        var focus = svg.append("g")
+            .attr("class", "focus")
+        var context = svg.append("g")
+            .attr("class", "context")
+            .attr("transform", "translate(0," + margin2.top + ")");
+
+        var lineChart = svg.append("g")
+            .attr("class", "focus")
+            .attr("clip-path", "url(#clip)");
+
+        // DRAW AXES IN FOCUS
+        var gxAxis = focus.append("g")
                 .attr('class', 'x axis')
-                .call(xAxis)
-            .append("g")
+                .attr('transform','translate(0, '+ height+ ')') // translate to bottom
+                .call(xAxis);
+        var gyAxis = focus.append("g")
                 .attr('class', 'y axis')
                 .call(yAxis);
-        
+
         // LINE GRAPH DRAW
-        var svgLine = svg.append("path")
+        lineChart.append("path")
             .attr("d", valueLine(data))
+            .style("fill","none")
             .attr("stroke", "red");
 
+        // CONTEXT MODIFY
+        context.append("path")
+            .attr("d", valueLine2(data))
+            .style("fill","none")
+            .attr("stroke", "red");
+        context.append("g")
+            .attr("class", "axis axis--x")
+            .attr("transform", "translate(0," + height2 + ")")
+            .call(xAxis);
+
+        context.append("g")
+            .attr("class", "brush")
+            .call(brush)
+            .call(brush.move, x.range());
+
+        // ZOOM ADD
+        svg.append("rect")
+            .attr("class", "zoom")
+            .attr("width", width)
+            .attr("height", height)
+            .style("fill","none")
+            .call(zoom);
+            
         // AXIS LABELS
         var xLabel = d3.select('svg').append("text")
             .attr("class", "x label")
+            .style('font', '20px arial')
             .attr("x", width/2)
-            .attr("y", 40)
+            .attr("y", height+margin.top+margin.bottom*2)
             .text("Year");
         var yLabel = d3.select('svg').append("text")
             .attr("class", "y label")
             .attr("text-anchor", "end")
+            .style('font', '20px arial')
             .attr("x", -height/2)
             .attr("y", 20)
             .attr("transform", "rotate(-90)")
             .text("CO2 / PPM");
 
-        // TRENDLINE - COPIED FROM http://bl.ocks.org/benvandyke/8459843
-        var xLabels = data.map(function (d) { return d['yearmonth']; });
-        var xSeries = d3.range(1, xLabels.length + 1);
-		var ySeries = data.map(function(d) { return parseFloat(d['rate']); });
+        // CHART LABEL
+        var chartLabel = d3.select('svg').append('text')
+            .attr('class', 'chart_label')
+            .style('font', '24px arial')
+            .style('font-weight', 'bold')
+            .attr('x', width/3)
+            .attr('y', margin.top)
+            .text('Trends in Atmospheric Carbon Dioxide');
 
-        var leastSquaresCoeff = leastSquares(xSeries, ySeries);
-
-        var x1 = xLabels[0];
-		var y1 = leastSquaresCoeff[0] + leastSquaresCoeff[1];
-		var x2 = xLabels[xLabels.length - 1];
-		var y2 = leastSquaresCoeff[0] * xSeries.length + leastSquaresCoeff[1];
-		var trendData = [[x1,y1,x2,y2]];
-		
-		var trendline = d3.select('svg').selectAll(".trendline")
-			.data(trendData);
-			
-		trendline.enter()
-			.append("line")
-			.attr("class", "trendline")
-			.attr("x1", function(d) { return x(d[0]); })
-			.attr("y1", function(d) { return y(d[1]); })
-			.attr("x2", function(d) { return x(d[2]); })
-			.attr("y2", function(d) { return y(d[3]); })
-			.attr("stroke", "black")
-			.attr("stroke-width", 1);
-            
+        // FUNCTIONS FOR BRUSH AND ZOOM 
+        function brushed() {
+            if (d3.event.sourceEvent && d3.event.sourceEvent.type === "zoom") return; // ignore brush-by-zoom
+            var s = d3.event.selection || x.range();
+            x.domain(s.map(x.invert, 2));
+            lineChart.select(".line").attr("d", valueLine);
+            focus.select(".axis--x").call(xAxis);
+            svg.select(".zoom").call(zoom.transform, d3.zoomIdentity
+                .scale(width / (s[1] - s[0]))
+                .translate(-s[0], 0));
         }
 
-        // returns slope, intercept and r-square of the line
-	function leastSquares(xSeries, ySeries) {
-		var reduceSumFunc = function(prev, cur) { return prev + cur; };
-		
-		var xBar = xSeries.reduce(reduceSumFunc) * 1.0 / xSeries.length;
-		var yBar = ySeries.reduce(reduceSumFunc) * 1.0 / ySeries.length;
+            function zoomed() {
+            if (d3.event.sourceEvent && d3.event.sourceEvent.type === "brush") return; // ignore zoom-by-brush
+            var t = d3.event.transform;
+            x.domain(t.rescaleX(x).domain());
+            lineChart.select(".line").attr("d", valueLine);
+            focus.select(".axis--x").call(xAxis);
+            context.select(".brush").call(brush.move, x.range().map(t.invertX, t));
+        }
 
-		var ssXX = xSeries.map(function(d) { return Math.pow(d - xBar, 2); })
-			.reduce(reduceSumFunc);
-		
-		var ssYY = ySeries.map(function(d) { return Math.pow(d - yBar, 2); })
-			.reduce(reduceSumFunc);
-			
-		var ssXY = xSeries.map(function(d, i) { return (d - xBar) * (ySeries[i] - yBar); })
-			.reduce(reduceSumFunc);
-			
-		var slope = ssXY / ssXX;
-		var intercept = yBar - (xBar * slope);
-		var rSquare = Math.pow(ssXY, 2) / (ssXX * ssYY);
-		
-		return [slope, intercept, rSquare];
-    }
+        }
  </script>
  </body>
 </html>
