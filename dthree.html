@@ -7,6 +7,16 @@
  <script src = "https://d3js.org/d3.v5.min.js"></script>
  <script src="https://code.jquery.com/jquery-3.1.0.min.js"></script>
  <style>
+    .line {
+        fill: none;
+        stroke: red;
+        stroke-width: 1.5px;
+    }
+    .zoom {
+        cursor: move;
+        fill: none;
+        pointer-events: all;
+    }
  </style>
 </head>
  <body>
@@ -30,7 +40,7 @@
             .domain(d3.extent(data, function (d) { return d["Interpolated"]}))
             .range([height, 0]);
         var y2 = d3.scaleLinear()
-            .domain(d3.extent(data, function (d) { return d["Interpolated"]}))
+            .domain(y.domain())
             .range([height2, 0]);
 
         // X TIME SCALE
@@ -38,19 +48,15 @@
         var x = d3.scaleTime()
             .domain(d3.extent(data, function (d) { return parseDate(d["Date"])}))
             .range([0, width]);
+        var x2 = d3.scaleTime()
+            .domain(x.domain())
+            .range([0, width]);
 
         // AXES
         var xAxis = d3.axisBottom(x).ticks(3);
+        var xAxis2 = d3.axisBottom(x2).ticks(3);
         var yAxis = d3.axisLeft(y).ticks(3);
 
-        // LINE
-        var valueLine = d3.line()
-            .x(function (d) { return x(parseDate(d["Date"]))})
-            .y(function (d) { return y(d["Interpolated"])});
-        var valueLine2 = d3.line()
-            .x(function (d) { return x(parseDate(d["Date"]))})
-            .y(function (d) { return y2(d["Interpolated"])});
-        
         // ZOOM AND BRUSH INIT
         var brush = d3.brushX()
             .extent([[0, 0], [width, height2]])
@@ -62,6 +68,14 @@
             .extent([[0, 0], [width, height]])
             .on("zoom", zoomed);
 
+        // LINE
+        var valueLine = d3.line()
+            .x(function (d) { return x(parseDate(d["Date"]))})
+            .y(function (d) { return y(d["Interpolated"])});
+        var valueLine2 = d3.line()
+            .x(function (d) { return x2(parseDate(d["Date"]))})
+            .y(function (d) { return y2(d["Interpolated"])});
+
         // SVG DRAW
         var svg = d3.select('body')
             .append("svg") // svg setup
@@ -71,33 +85,46 @@
                 .attr("transform", "translate("+margin.left+","+margin.top+")");
 
          // FOCUS, CONTEXT, AND LINE CHART DRAW
-        var focus = svg.append("g")
-            .attr("class", "focus")
-        var context = svg.append("g")
-            .attr("class", "context")
-            .attr("transform", "translate(0," + margin2.top + ")");
+        var clip = svg.append("defs").append("svg:clipPath")
+            .attr("id", "clip")
+            .append("svg:rect")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("x", 0)
+            .attr("y", 0); 
 
         var lineChart = svg.append("g")
             .attr("class", "focus")
             .attr("clip-path", "url(#clip)");
 
+        var focus = svg.append("g")
+            .attr("class", "focus")
+
+        var context = svg.append("g")
+            .attr("class", "context")
+            .attr("transform", "translate(0," + margin2.top + ")");
+
+
         // DRAW AXES IN FOCUS
         var gxAxis = focus.append("g")
-                .attr('class', 'x axis')
+            .attr("class", "axis axis--x")
                 .attr('transform','translate(0, '+ height+ ')') // translate to bottom
                 .call(xAxis);
         var gyAxis = focus.append("g")
-                .attr('class', 'y axis')
+        .attr("class", "axis axis--y")
                 .call(yAxis);
 
         // LINE GRAPH DRAW
         lineChart.append("path")
+            .datum(data)
+            .attr("class", "line")
             .attr("d", valueLine(data))
             .style("fill","none")
             .attr("stroke", "red");
 
         // CONTEXT MODIFY
         context.append("path")
+            .datum(data)
             .attr("d", valueLine2(data))
             .style("fill","none")
             .attr("stroke", "red");
@@ -116,7 +143,6 @@
             .attr("class", "zoom")
             .attr("width", width)
             .attr("height", height)
-            .style("fill","none")
             .call(zoom);
             
         // AXIS LABELS
@@ -147,8 +173,8 @@
         // FUNCTIONS FOR BRUSH AND ZOOM 
         function brushed() {
             if (d3.event.sourceEvent && d3.event.sourceEvent.type === "zoom") return; // ignore brush-by-zoom
-            var s = d3.event.selection || x.range();
-            x.domain(s.map(x.invert, 2));
+            var s = d3.event.selection || x2.range();
+            x.domain(s.map(x2.invert, x2));
             lineChart.select(".line").attr("d", valueLine);
             focus.select(".axis--x").call(xAxis);
             svg.select(".zoom").call(zoom.transform, d3.zoomIdentity
@@ -156,10 +182,10 @@
                 .translate(-s[0], 0));
         }
 
-            function zoomed() {
+        function zoomed() {
             if (d3.event.sourceEvent && d3.event.sourceEvent.type === "brush") return; // ignore zoom-by-brush
             var t = d3.event.transform;
-            x.domain(t.rescaleX(x).domain());
+            x.domain(t.rescaleX(x2).domain());
             lineChart.select(".line").attr("d", valueLine);
             focus.select(".axis--x").call(xAxis);
             context.select(".brush").call(brush.move, x.range().map(t.invertX, t));
